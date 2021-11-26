@@ -62,10 +62,16 @@ python -m paddle.distributed.launch train.py --config configs/espnet_cityscapes_
 ### 第四步：测试
 output目录下包含已经训练好的模型参数以及对应的日志文件。
 ```bash
-python val.py --config configs/espnet_cityscapes_1024_512_120k.yml --model_path output/scale_x2/best_model/model.pdparams
+python val.py --config configs/espnet_cityscapes_1024_512_120k.yml --model_path output/best_model/model.pdparams
 ```
 
-## 6 代码结构与说明
+### 第五步：tipc
+在linux下，进入ESPNet文件夹，运行命令
+```
+bash test_train_inference_python.sh
+```
+
+## 5 代码结构与说明
 **代码结构**
 ```
 ├─configs                          
@@ -82,5 +88,5 @@ python val.py --config configs/espnet_cityscapes_1024_512_120k.yml --model_path 
 │  val.py                       
 ```
 **说明**
-1、本项目在Aistudio平台，使用Tesla V100 * 4 脚本任务训练120K miou达到69.56%。
+1、本项目在Aistudio平台，使用Tesla V100 * 4 脚本任务训练120K miou达到64.17%。
 2、本项目基于PaddleSeg开发。
