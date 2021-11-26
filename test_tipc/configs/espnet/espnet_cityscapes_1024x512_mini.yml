@@ -1,0 +1,61 @@
+batch_size: 2
+iters: 50
+
+train_dataset:
+  type: Dataset
+  dataset_root: test_tipc/data/mini_city
+  train_path: test_tipc/data/mini_city/train.list
+  num_classes: 19
+  transforms:
+    - type: ResizeStepScaling
+      min_scale_factor: 0.5
+      max_scale_factor: 2.0
+      scale_step_size: 0.25
+    - type: RandomPaddingCrop
+      crop_size: [1024, 512]
+    - type: RandomHorizontalFlip
+    - type: RandomDistort
+      brightness_range: 0.4
+      contrast_range: 0.4
+      saturation_range: 0.4
+    - type: Normalize
+  mode: train
+
+val_dataset:
+  type: Dataset
+  dataset_root: test_tipc/data/mini_city
+  val_path: test_tipc/data/mini_city/val.list
+  num_classes: 19
+  transforms:
+    - type: Normalize
+  mode: val
+
+export:
+  transforms:
+    - type: Resize
+      target_size: [1024,512]
+    - type: Normalize
+
+
+optimizer:
+  type: adam
+#   momentum: 0.9
+  weight_decay: 0.0005
+
+lr_scheduler:
+  type: PolynomialDecay
+  learning_rate: 0.05
+  end_lr: 0
+  power: 0.9
+
+loss:
+  types:
+    - type: CrossEntropyLoss
+      weight: [2.79834108 ,6.92945723 ,3.84068512 ,9.94349362 ,9.77098823 ,9.51484 ,10.30981624 ,9.94307377 ,4.64933892 ,9.55759938 ,7.86692178 ,9.53126629 ,10.3496365 ,6.67234062 ,10.26054204 ,10.28785275 ,10.28988296 ,10.40546021 ,10.13848367]
+  coef: [1]
+
+model:
+  type: ESPNet
+  p: 2
+  q: 8
+  num_classes: 19
