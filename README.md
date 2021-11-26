@@ -1,5 +1,3 @@
-English | [简体中文](README_CN.md)
-
 # ESPNet
 
 ## 1 简介
