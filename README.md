@@ -31,3 +31,56 @@ https://github.com/sacmehta/ESPNet
     - PaddlePaddle == develop
 
 
+## 快速开始
+
+### 第一步：克隆本项目
+```bash
+# clone this repo
+git clone https://github.com/simuler/ESPNet.git
+cd ESPNet
+```
+
+**安装第三方库**
+```bash
+pip install -r requirements.txt
+```
+
+### 第二步：计算交叉熵损失的权重
+运行compute_classweight.py文件，注意修改文件内的数据路径，将运行打印的输出结果作为配置文件的损失函数权重。
+配置文件中已经放置了计算过的损失函数权重，无需再次计算
+
+### 第三步：训练模型
+单卡训练：
+```bash
+python train.py --config configs/espnet_cityscapes_1024_512_120k.yml  --do_eval --use_vdl --log_iter 100 --save_interval 1000 --save_dir output
+```
+多卡训练：
+```bash
+python -m paddle.distributed.launch train.py --config configs/espnet_cityscapes_1024_512_120k.yml  --do_eval --use_vdl --log_iter 100 --save_interval 1000 --save_dir output
+```
+
+### 第四步：测试
+output目录下包含已经训练好的模型参数以及对应的日志文件。
+```bash
+python val.py --config configs/espnet_cityscapes_1024_512_120k.yml --model_path output/scale_x2/best_model/model.pdparams
+```
+
+## 6 代码结构与说明
+**代码结构**
+```
+├─configs                          
+├─images                         
+├─output                           
+├─paddleseg                                                   
+│  export.py                     
+│  predict.py                        
+│  README.md                        
+│  README_CN.md                     
+│  requirements.txt                      
+│  setup.py                   
+│  train.py                
+│  val.py                       
+```
+**说明**
+1、本项目在Aistudio平台，使用Tesla V100 * 4 脚本任务训练120K miou达到69.56%。
+2、本项目基于PaddleSeg开发。
