@@ -8,9 +8,22 @@
 
 ### CityScapes
 
-| Model | Backbone | Resolution | Training Iters | mIoU |
-|:---:|:---:|:---:|:---:|:---:|:---:|
-|ESPNet|--|1024x512|120000|64.17%|
+<table>
+<tr>
+    <th>Model</th>
+    <th>Backbone</th>
+    <th>Resolution</th>
+    <th>Training Iters</th>
+    <th>mIoU</th>
+</tr>
+<tr>
+    <th>ESPNet</th>
+    <th>--</th>
+    <th>1024x512</th>
+    <th>120000</th>
+    <th>64.17%</th>
+</tr>
+</table>
 
 #### Additional Requirement
 paddlepaddle >= 2.2.0  
