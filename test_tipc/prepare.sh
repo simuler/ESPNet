@@ -30,5 +30,5 @@ if [ ${MODE} = "infer" ];then
 fi
 rm -rf ./test_tipc/data/mini_city
 #wget -nc -P ./test_tipc/data/ https://paddleseg.bj.bcebos.com/humanseg/data/mini_supervisely.zip
-cd .. && cp -r ./data/data11077/ ./PaddleSeg/test_tipc/data/ && cd ./PaddleSeg
+cd .. && cp -r ./data/data11077/ ./ESPNet/test_tipc/data/ && cd ./ESPNet
 # cd ./test_tipc/data/ && unzip mini_city.zip && cd ../../
