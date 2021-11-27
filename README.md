@@ -15,7 +15,7 @@ https://github.com/sacmehta/ESPNet
 
 | |steps|opt|image_size|batch_size|dataset|memory|card|mIou|config|
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-|ESPNet|120k|adam|1024x512|8|CityScapes|32G|4|0.6417|[espnet_cityscapes_1024_512_120k.yml](configs/espnet_cityscapes_1024_512_120k.yml)|
+|ESPNet|120k|adam|1024x512|8|CityScapes|32G|4|0.6417|[espnet_cityscapes_1024x512_120k.yml](configs/espnet_cityscapes_1024x512_120k.yml)|
 
 ## 3 数据集
 [CityScapes dataset](https://www.cityscapes-dataset.com/)
@@ -52,17 +52,17 @@ pip install -r requirements.txt
 ### 第三步：训练模型
 单卡训练：
 ```bash
-python train.py --config configs/espnet_cityscapes_1024_512_120k.yml  --do_eval --use_vdl --log_iter 100 --save_interval 1000 --save_dir output
+python train.py --config configs/espnet_cityscapes_1024x512_120k.yml  --do_eval --use_vdl --log_iter 100 --save_interval 1000 --save_dir output
 ```
 多卡训练：
 ```bash
-python -m paddle.distributed.launch train.py --config configs/espnet_cityscapes_1024_512_120k.yml  --do_eval --use_vdl --log_iter 100 --save_interval 1000 --save_dir output
+python -m paddle.distributed.launch train.py --config configs/espnet_cityscapes_1024x512_120k.yml  --do_eval --use_vdl --log_iter 100 --save_interval 1000 --save_dir output
 ```
 
 ### 第四步：测试
 output目录下包含已经训练好的模型参数以及对应的日志文件。
 ```bash
-python val.py --config configs/espnet_cityscapes_1024_512_120k.yml --model_path output/best_model/model.pdparams
+python val.py --config configs/espnet_cityscapes_1024x512_120k.yml --model_path output/best_model/model.pdparams
 ```
 
 ### 第五步：tipc
