@@ -10,7 +10,7 @@
 
 | Model | Backbone | Resolution | Training Iters | mIoU |
 |:---:|:---:|:---:|:---:|:---:|:---:|
-|ESPNet|-|1024x512|120000|64.17%|
+|ESPNet|--|1024x512|120000|64.17%|
 
 #### Additional Requirement
 paddlepaddle >= 2.2.0  
