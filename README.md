@@ -90,3 +90,8 @@ bash test_train_inference_python.sh
 **说明**
 1、本项目在Aistudio平台，使用Tesla V100 * 4 脚本任务训练120K miou达到64.17%。
 2、本项目基于PaddleSeg开发。
+
+
+## 6 相关链接
+[notebook](https://aistudio.baidu.com/aistudio/projectdetail/3177118?contributionType=1)
+[脚本任务](https://aistudio.baidu.com/aistudio/clusterprojectdetail/2996121)
