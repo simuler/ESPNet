@@ -77,6 +77,7 @@ class DownSamplerB(nn.Layer):
         self.d8 = CDilated(n, n, 3, 1, 8)
         self.d16 = CDilated(n, n, 3, 1, 16)
         self.bn = nn.BatchNorm2D(out_channels, epsilon=1e-3)
+        # self.act = nn.PReLU(out_channels)
         self._prelu = layers.Activation("prelu")
 
     def forward(self, input):
@@ -88,16 +89,16 @@ class DownSamplerB(nn.Layer):
         d16 = self.d16(output1)
 
         add1 = d2
-        # add2 = add1 + d4
-        # add3 = add2 + d8
-        # add4 = add3 + d16 elementwise_add(X, Y, axis=0)
-        add2 = paddle.add(add1, d4)
-        add3 = paddle.add(add2, d8)
-        add4 = paddle.add(add3, d16)
+        add2 = add1 + d4
+        add3 = add2 + d8
+        add4 = add3 + d16
 
         combine = paddle.concat([d1, add1, add2, add3, add4],axis=1)
+        # combine = torch.cat([d1, add1, add2, add3, add4],1)
+        #combine_in_out = input + combine
         output = self.bn(combine)
         output = self._prelu(output)
+        # output = self.act(output)
         return output
 
 
@@ -131,12 +132,9 @@ class DilatedParllelResidualBlockB(nn.Layer):
 
         # heirarchical fusion for de-gridding
         add1 = d2
-        # add2 = add1 + d4
-        # add3 = add2 + d8
-        # add4 = add3 + d16
-        add2 = paddle.add(add1, d4)
-        add3 = paddle.add(add2, d8)
-        add4 = paddle.add(add3, d16)
+        add2 = add1 + d4
+        add3 = add2 + d8
+        add4 = add3 + d16
 
         #merge
         combine = paddle.concat([d1, add1, add2, add3, add4], axis=1)
@@ -178,7 +176,7 @@ class ESPNet_Encoder(nn.Layer):
     '''
     This class defines the ESPNet-C network in the paper
     '''
-    def __init__(self, classes=19, p=5, q=3):
+    def __init__(self, classes=20, p=5, q=3):
         '''
         :param classes: number of classes in the dataset. Default is 20 for the cityscapes
         :param p: depth multiplier
@@ -210,7 +208,6 @@ class ESPNet_Encoder(nn.Layer):
         :param input: Receives the input RGB image
         :return: the transformed feature map with spatial dimensions 1/8th of the input image
         '''
-        print('encoder',input)
         output0 = self.level1(input)
         inp1 = self.sample1(input)
         inp2 = self.sample2(input)
@@ -240,12 +237,12 @@ class ESPNet_Encoder(nn.Layer):
         return classifier
 
 @manager.MODELS.add_component
-class ESPNet(nn.Layer):
+class ESPNetV2(nn.Layer):
     '''
     This class defines the ESPNet network
     '''
 
-    def __init__(self, num_classes=19, p=2, q=3):
+    def __init__(self, num_classes=19, p=2, q=3, encoderFile=None):
         '''
         :param classes: number of classes in the dataset. Default is 20 for the cityscapes
         :param p: depth multiplier
@@ -256,9 +253,8 @@ class ESPNet(nn.Layer):
         super().__init__()
         classes = num_classes
         self.encoder = ESPNet_Encoder(classes, p, q)
-        # print('encoderfile',encoderFile)
         # if encoderFile != None:
-        #     self.encoder.set_state_dict(paddle.load(encoderFile))
+        #     self.encoder.load_state_dict(paddle.load(encoderFile))
         #     print('Encoder loaded!')
         # load the encoder modules
         self.modules = list()
@@ -267,7 +263,7 @@ class ESPNet(nn.Layer):
 
         # light-weight decoder
         self.level3_C = C(128 + 3, classes, 1, 1)
-        self.br = nn.BatchNorm2D(classes, epsilon=1e-3)
+        self.br = nn.BatchNorm2D(classes, epsilon=1e-03)
         self.conv = layers.ConvBNPReLU(19 + classes, classes, 3, 1)
 
         self.up_l3 = nn.Sequential(nn.Conv2DTranspose(classes, classes, 2, stride=2, padding=0, output_padding=0, bias_attr=False))
@@ -294,6 +290,7 @@ class ESPNet(nn.Layer):
                 output1 = layer(output1_0)
             else:
                 output1 = layer(output1)
+
         output1_cat = self.modules[6](paddle.concat([output1, output1_0, inp2], axis=1))
 
         output2_0 = self.modules[7](output1_cat)  # down-sampled
@@ -305,17 +302,21 @@ class ESPNet(nn.Layer):
 
         output2_cat = self.modules[9](paddle.concat([output2_0, output2], axis=1)) # concatenate for feature map width expansion
 
-        output2_C = self.up_l3(self.br(self.modules[10](output2_cat))) #RUM
+        output2_c = self.up_l3(self.br(self.modules[10](output2_cat))) #RUM
 
         output1_C = self.level3_C(output1_cat) # project to C-dimensional space
-
-        comb_l2_l3 = self.up_l2(self.combine_l2_l3(paddle.concat([output1_C, output2_C], axis=1))) #RUM
+        comb_l2_l3 = self.up_l2(self.combine_l2_l3(paddle.concat([output1_C, output2_c], axis=1))) #RUM
 
         concat_features = self.conv(paddle.concat([comb_l2_l3, output0_cat], axis=1))
-
+        # print(concat_features.shape)
         classifier = self.classifier(concat_features)
-
+        # classifier = self.classifier(classifier)
+        # classifier = F.interpolate(classifier,scale_factor=2, mode="bilinear", align_corners=True)
+        # classifier = F.interpolate(classifier,scale_factor=2, mode="bilinear", align_corners=True)
+        # classifier = F.interpolate(classifier,scale_factor=2, mode="bilinear", align_corners=True)
+        # print(classifier.shape)
         return [classifier]
+        # return concat_features
 
 
 if __name__ == '__main__':

@@ -4,7 +4,6 @@ iters: 80000
 train_dataset:
   type: Cityscapes
   dataset_root: /home/aistudio/data/data64550/cityscapes
-#   dataset_root: cityscapes
   transforms:
     - type: ResizeStepScaling
       min_scale_factor: 0.5
@@ -23,21 +22,23 @@ train_dataset:
 val_dataset:
   type: Cityscapes
   dataset_root: /home/aistudio/data/data64550/cityscapes
-#   dataset_root: cityscapes
+  # dataset_root: cityscapes
   transforms:
     - type: Normalize
   mode: val
 
 
 optimizer:
-#   _inherited_: False
-  type: adam
-  weight_decay: 0.0005
+  type: sgd
+  momentum: 0.9
+  weight_decay: 4.0e-5
 
 lr_scheduler:
   type: PolynomialDecay
-  learning_rate: 0.001
-  end_lr: 0.0
+  learning_rate: 0.01
+#   step_size: 100
+#   gamma: 0.5
+  end_lr: 0
   power: 0.9
 
 loss:
