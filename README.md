@@ -15,7 +15,7 @@ https://github.com/sacmehta/ESPNet
 
 | |steps|opt|image_size|batch_size|dataset|memory|card|mIou|config|
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-|ESPNet|120k|adam|1024x512|4|CityScapes|32G|4|0.6417|[espnet_cityscapes_1024x512_120k.yml](configs/espnet/espnet_cityscapes_1024x512_120k.yml)|
+|ESPNet|120k|adam|1024x512|4|CityScapes|32G|4|0.6365|[espnet_cityscapes_1024x512_120k.yml](configs/espnet/espnet_cityscapes_1024x512_120k.yml)|
 
 ## 3 数据集
 [CityScapes dataset](https://www.cityscapes-dataset.com/)
@@ -88,7 +88,7 @@ bash test_train_inference_python.sh
 │  val.py                       
 ```
 **说明**
-1、本项目在Aistudio平台，使用Tesla V100 * 4 脚本任务训练120K miou达到64.17%。
+1、本项目在Aistudio平台，使用Tesla V100 * 4 脚本任务训练120K miou达到63.65%。
 2、本项目基于PaddleSeg开发。
 
 ## 6 模型信息
