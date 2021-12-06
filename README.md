@@ -15,7 +15,7 @@ https://github.com/sacmehta/ESPNet
 
 | |steps|opt|image_size|batch_size|dataset|memory|card|mIou|config|
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-|ESPNet|120k|adam|1024x512|4|CityScapes|32G|4|0.6365|[espnet_cityscapes_1024x512_120k.yml](configs/espnet/espnet_cityscapes_1024x512_120k.yml)|
+|ESPNet|120k|adam|1024x512|4|CityScapes|32G|4|0.6365|[espnet_cityscapes_1024x512_120k.yml](configs/espnetv1/espnetv1_cityscapes_1024x512_120k.yml)|
 
 ## 3 数据集
 [CityScapes dataset](https://www.cityscapes-dataset.com/)
@@ -52,23 +52,17 @@ pip install -r requirements.txt
 ### 第三步：训练模型
 单卡训练：
 ```bash
-python train.py --config configs/espnet_cityscapes_1024x512_120k.yml  --do_eval --use_vdl --log_iter 100 --save_interval 1000 --save_dir output
+python train.py --config configs/espnetv1/espnetv1_cityscapes_1024x512_120k.yml  --do_eval --use_vdl --log_iter 100 --save_interval 1000 --save_dir output
 ```
 多卡训练：
 ```bash
-python -m paddle.distributed.launch train.py --config configs/espnet_cityscapes_1024x512_120k.yml  --do_eval --use_vdl --log_iter 100 --save_interval 1000 --save_dir output
+python -m paddle.distributed.launch train.py --config configs/espnetv1/espnetv1_cityscapes_1024x512_120k.yml  --do_eval --use_vdl --log_iter 100 --save_interval 1000 --save_dir output
 ```
 
 ### 第四步：测试
 output目录下包含已经训练好的模型参数以及对应的日志文件。
 ```bash
-python val.py --config configs/espnet_cityscapes_1024x512_120k.yml --model_path output/best_model/model.pdparams
-```
-
-### 第五步：tipc
-在linux下，进入ESPNet文件夹，运行命令
-```
-bash test_train_inference_python.sh
+python val.py --config configs/espnetv1/espnetv1_cityscapes_1024x512_120k.yml --model_path output/best_model/model.pdparams
 ```
 
 ## 5 代码结构与说明
@@ -102,4 +96,4 @@ bash test_train_inference_python.sh
 | 框架版本 | PaddlePaddle==2.2.0 |
 | 应用场景 | 语义分割 |
 | 硬件支持 | GPU、CPU |
-| 在线体验 | [notebook](https://aistudio.baidu.com/aistudio/projectdetail/3177118?contributionType=1), [Script](https://aistudio.baidu.com/aistudio/clusterprojectdetail/2996121)|
+| 在线体验 | [notebook](https://aistudio.baidu.com/aistudio/projectdetail/3193232?contributionType=1), [Script](https://aistudio.baidu.com/aistudio/clusterprojectdetail/3193362)|
