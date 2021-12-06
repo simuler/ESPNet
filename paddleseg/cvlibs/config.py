@@ -152,14 +152,13 @@ class Config(object):
             raise RuntimeError(
                 'No `lr_scheduler` specified in the configuration file.')
         params = self.dic.get('lr_scheduler')
+
         lr_type = params.pop('type')
         if lr_type == 'PolynomialDecay':
             params.setdefault('decay_steps', self.iters)
             params.setdefault('end_lr', 0)
             params.setdefault('power', 0.9)
-        if lr_type == 'StepDecay':
-            params.setdefault('step_size', 100)
-            params.setdefault('gamma', 0.5)
+
         return getattr(paddle.optimizer.lr, lr_type)(**params)
 
     @property
@@ -197,7 +196,6 @@ class Config(object):
     @property
     def optimizer(self) -> paddle.optimizer.Optimizer:
         if 'lr_scheduler' in self.dic:
-
             lr = self.lr_scheduler
         else:
             lr = self.learning_rate
@@ -230,8 +228,7 @@ class Config(object):
             'type': 'poly',
             'power': 0.9
         }).copy()
-        # print(args['type'])
-        # print(args)
+
         if args['type'] == 'poly':
             args.setdefault('decay_steps', self.iters)
             args.setdefault('end_lr', 0)
@@ -384,8 +381,7 @@ class Config(object):
                 ]
             else:
                 params[key] = val
-            # print(params[key])
-        # print(params)
+
         return component(**params)
 
     @property
@@ -395,11 +391,6 @@ class Config(object):
     @property
     def export_config(self) -> Dict:
         return self.dic.get('export', {})
-
-    @property
-    def to_static_training(self) -> bool:
-        '''Whether to use @to_static for training'''
-        return self.dic.get('to_static_training', False)
 
     def _is_meta_type(self, item: Any) -> bool:
         return isinstance(item, dict) and 'type' in item

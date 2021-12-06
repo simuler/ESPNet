@@ -68,8 +68,7 @@ def train(model,
           keep_checkpoint_max=5,
           test_config=None,
           fp16=False,
-          profiler_options=None,
-          to_static_training=False):
+          profiler_options=None):
     """
     Launch training.
 
@@ -92,13 +91,11 @@ def train(model,
         test_config(dict, optional): Evaluation config.
         fp16 (bool, optional): Whether to use amp.
         profiler_options (str, optional): The option of train profiler.
-        to_static_training (bool, optional): Whether to use @to_static for training.
     """
     model.train()
     nranks = paddle.distributed.ParallelEnv().nranks
     local_rank = paddle.distributed.ParallelEnv().local_rank
-    # print('100',nranks)
-    # print('101',model)
+
     start_iter = 0
     if resume_model is not None:
         start_iter = resume(model, optimizer, resume_model)
@@ -134,10 +131,6 @@ def train(model,
         from visualdl import LogWriter
         log_writer = LogWriter(save_dir)
 
-    if to_static_training:
-        model = paddle.jit.to_static(model)
-        logger.info("Successfully to apply @to_static")
-
     avg_loss = 0.0
     avg_loss_list = []
     iters_per_epoch = len(batch_sampler)
@@ -162,12 +155,11 @@ def train(model,
             images = data[0]
             labels = data[1].astype('int64')
             edges = None
-            # print('165',images.shape)
             if len(data) == 3:
                 edges = data[2].astype('int64')
             if hasattr(model, 'data_format') and model.data_format == 'NHWC':
                 images = images.transpose((0, 2, 3, 1))
-            # print('169',images.shape)
+
             if fp16:
                 with paddle.amp.auto_cast(
                         enable=True,

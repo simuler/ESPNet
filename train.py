@@ -152,7 +152,6 @@ def main(args):
         cfg.dic['model']['data_format'] = args.data_format
         cfg.dic['model']['backbone']['data_format'] = args.data_format
         loss_len = len(cfg.dic['loss']['types'])
-        # print('155',loss_len)
         for i in range(loss_len):
             cfg.dic['loss']['types'][i]['data_format'] = args.data_format
 
@@ -173,7 +172,7 @@ def main(args):
     logger.info(msg)
 
     config_check(cfg, train_dataset=train_dataset, val_dataset=val_dataset)
-    print('loss',losses)
+
     train(
         cfg.model,
         train_dataset,
@@ -191,8 +190,7 @@ def main(args):
         keep_checkpoint_max=args.keep_checkpoint_max,
         test_config=cfg.test_config,
         fp16=args.fp16,
-        profiler_options=args.profiler_options,
-        to_static_training=cfg.to_static_training)
+        profiler_options=args.profiler_options)
 
 
 if __name__ == '__main__':

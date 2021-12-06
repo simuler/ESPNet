@@ -12,330 +12,271 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
-
 import paddle
 import paddle.nn as nn
 import paddle.nn.functional as F
 
-from paddleseg import utils
-from paddleseg.cvlibs import manager, param_init
-from paddleseg.models import layers
+import os
+
+def SyncBatchNorm(*args, **kwargs):
+    """In cpu environment nn.SyncBatchNorm does not have kernel so use nn.BatchNorm2D instead"""
+    if paddle.get_device() == 'cpu' or os.environ.get('PADDLESEG_EXPORT_STAGE'):
+        return nn.BatchNorm2D(*args, **kwargs)
+    elif paddle.distributed.ParallelEnv().nranks == 1:
+        return nn.BatchNorm2D(*args, **kwargs)
+    else:
+        return nn.SyncBatchNorm(*args, **kwargs)
+
+
+# @manager.MODELS.add_component
+class ESPNetV1(nn.Layer):
+    def __init__(self, num_classes, in_channels=3, level2_depth=2, level3_depth=3, pretrained=None):
+        super().__init__()
+        self.encoder = ESPNetEncoder(num_classes, in_channels, level2_depth, level3_depth)
+
+        self.level3_up = nn.Conv2DTranspose(num_classes, num_classes, 2, stride=2, padding=0, output_padding=0, bias_attr=False)
+        self.br3 = SyncBatchNorm(num_classes)
+        self.level2_proj = Conv(in_channels + 128, num_classes, 1, 1)
+        self.combine_l2_l3 = nn.Sequential(
+            BNPReLU(2 * num_classes),
+            DilatedResidualBlock(2 * num_classes, num_classes, residual=False),
+        )
+        self.level2_up = nn.Sequential(
+            nn.Conv2DTranspose(num_classes, num_classes, 2, stride=2, padding=0, output_padding=0, bias_attr=False),
+            BNPReLU(num_classes),
+        ) 
+        self.out_proj = ConvBNPReLU(16 + in_channels + num_classes, num_classes, 3, 1)
+        self.out_up = nn.Conv2DTranspose(num_classes, num_classes, 2, stride=2, padding=0, output_padding=0, bias_attr=False)
+    
+    def forward(self, x):
+        feat1, feat2, feat3 = self.encoder(x) # shape [N, 19, H, W]  [N, 131, H, W]  [N, C, H, W] 
+
+        feat3 = self.level3_up(self.br3(feat3))
+        feat2 = self.level2_proj(feat2)
+        merge_l2_l3 = self.combine_l2_l3(paddle.concat([feat2, feat3], axis=1))
+
+        up2 = self.level2_up(merge_l2_l3)
+        out = self.out_proj(paddle.concat([up2, feat1], axis=1))
+        out = self.out_up(out)
+        return [out]
+
+
+class ConvBNPReLU(nn.Layer):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1):
+        super().__init__()
+        padding = int((kernel_size - 1) / 2)
+        self.conv = nn.Conv2D(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias_attr=False)
+        self.bn = SyncBatchNorm(out_channels)
+        self.act = nn.PReLU(out_channels)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.bn(x)
+        x = self.act(x)
+        return x
 
 
 class BNPReLU(nn.Layer):
-    def __init__(self, out_channels, **kwargs):
+    def __init__(self, channels):
         super().__init__()
-        if 'data_format' in kwargs:
-            data_format = kwargs['data_format']
-        else:
-            data_format = 'NCHW'
-        self._batch_norm = layers.SyncBatchNorm(out_channels,
-                                                data_format=data_format)
-        self._prelu = layers.Activation("prelu")
+        self.bn = SyncBatchNorm(channels)
+        self.act = nn.PReLU(channels)
 
     def forward(self, x):
-        x = self._batch_norm(x)
-        x = self._prelu(x)
+        x = self.bn(x)
+        x = self.act(x)
         return x
 
-class C(nn.Layer):
-    def __init__(self, input_channels, out_channels, kSize, stride=1):
+
+class ConvBN(nn.Layer):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1):
         super().__init__()
-        padding = int((kSize - 1)/2)
-        self.conv = nn.Conv2D(input_channels, out_channels, (kSize, kSize),stride=stride, padding=padding, bias_attr=False)
+        padding = int((kernel_size - 1) / 2)
+        self.conv = nn.Conv2D(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias_attr=False)
+        self.bn = SyncBatchNorm(out_channels)
 
-    def forward(self, input):
-        '''
-        :param input: input feature map
-        :return: transformed feature map
-        '''
-        output = self.conv(input)
-        return output
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.bn(x)
+        return x
 
 
-class CDilated(nn.Layer):
-    def __init__(self, input_channels, out_channels, kSize, stride=1, d=1):
+class Conv(nn.Layer):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1):
         super().__init__()
-        padding = int((kSize - 1)/2) * d
-        self.conv = nn.Conv2D(input_channels, out_channels, (kSize,kSize), stride=stride, padding=padding, bias_attr=False,dilation=d)
+        padding = int((kernel_size - 1) / 2)
+        self.conv = nn.Conv2D(in_channels, out_channels, kernel_size, stride=stride, padding=padding, bias_attr=False)
 
-    def forward(self,input):
-        output = self.conv(input)
-        return output
+    def forward(self, x):
+        x = self.conv(x)
+        return x
 
 
-class DownSamplerB(nn.Layer):
-    def __init__(self, input_channels, out_channels):
+class ConvDilated(nn.Layer):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1):
         super().__init__()
-        n = int(out_channels/5)
-        n1 = out_channels - 4*n
-        self.c1 = C(input_channels, n, 3, 2)
-        self.d1 = CDilated(n, n1, 3, 1, 1)
-        self.d2 = CDilated(n, n, 3, 1, 2)
-        self.d4 = CDilated(n, n, 3, 1, 4)
-        self.d8 = CDilated(n, n, 3, 1, 8)
-        self.d16 = CDilated(n, n, 3, 1, 16)
-        self.bn = nn.BatchNorm2D(out_channels, epsilon=1e-3)
-        # self.act = nn.PReLU(out_channels)
-        self._prelu = layers.Activation("prelu")
+        padding = int((kernel_size - 1) / 2) * dilation
+        self.conv = nn.Conv2D(in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, bias_attr=False)
 
-    def forward(self, input):
-        output1 = self.c1(input)
-        d1 = self.d1(output1)
-        d2 = self.d2(output1)
-        d4 = self.d4(output1)
-        d8 = self.d8(output1)
-        d16 = self.d16(output1)
-
-        add1 = d2
-        add2 = add1 + d4
-        add3 = add2 + d8
-        add4 = add3 + d16
-
-        combine = paddle.concat([d1, add1, add2, add3, add4],axis=1)
-        # combine = torch.cat([d1, add1, add2, add3, add4],1)
-        #combine_in_out = input + combine
-        output = self.bn(combine)
-        output = self._prelu(output)
-        # output = self.act(output)
-        return output
+    def forward(self, x):
+        x = self.conv(x)
+        return x
 
 
-class DilatedParllelResidualBlockB(nn.Layer):
-    def __init__(self, input_channels, out_channels, add=True):
+class DownSampler(nn.Layer):
+    def __init__(self, in_channels, out_channels):
         super().__init__()
-        n = int(out_channels/5)
-        n1 = out_channels - 4*n
-        self.c1 = C(input_channels, n, 1, 1)
-        self.d1 = CDilated(n, n1, 3, 1, 1) # dilation rate of 2^0
-        self.d2 = CDilated(n, n, 3, 1, 2) # dilation rate of 2^1
-        self.d4 = CDilated(n, n, 3, 1, 4) # dilation rate of 2^2
-        self.d8 = CDilated(n, n, 3, 1, 8) # dilation rate of 2^3
-        self.d16 = CDilated(n, n, 3, 1, 16) # dilation rate of 2^4
+        branch_channels = out_channels // 5
+        remain_channels = out_channels - branch_channels * 4
+        self.conv1 = Conv(in_channels, branch_channels, 3, 2)
+        self.d_conv1 = ConvDilated(branch_channels, remain_channels, 3, 1, 1)
+        self.d_conv2 = ConvDilated(branch_channels, branch_channels, 3, 1, 2)
+        self.d_conv4 = ConvDilated(branch_channels, branch_channels, 3, 1, 4)
+        self.d_conv8 = ConvDilated(branch_channels, branch_channels, 3, 1, 8)
+        self.d_conv16 = ConvDilated(branch_channels, branch_channels, 3, 1, 16)
+        self.bn = SyncBatchNorm(out_channels)
+        self.act = nn.PReLU(out_channels)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        d1 = self.d_conv1(x)
+        d2 = self.d_conv2(x)
+        d4 = self.d_conv4(x)
+        d8 = self.d_conv8(x)
+        d16 = self.d_conv16(x)
+
+        feat1 = d2
+        feat2 = feat1 + d4
+        feat3 = feat2 + d8
+        feat4 = feat3 + d16
+
+        feat = paddle.concat([d1, feat1, feat2, feat3, feat4], axis=1)
+        out = self.bn(feat)
+        out = self.act(out)
+        return out
+        
+
+class DilatedResidualBlock(nn.Layer):
+    def __init__(self, in_channels, out_channels, residual=True):
+        super().__init__()
+        branch_channels = out_channels // 5
+        remain_channels = out_channels - branch_channels * 4
+        self.conv1 = Conv(in_channels, branch_channels, 1, 1)
+        self.d_conv1 = ConvDilated(branch_channels, remain_channels, 3, 1, 1)
+        self.d_conv2 = ConvDilated(branch_channels, branch_channels, 3, 1, 2)
+        self.d_conv4 = ConvDilated(branch_channels, branch_channels, 3, 1, 4)
+        self.d_conv8 = ConvDilated(branch_channels, branch_channels, 3, 1, 8)
+        self.d_conv16 = ConvDilated(branch_channels, branch_channels, 3, 1, 16)
         self.bn = BNPReLU(out_channels)
-        self.add = add
+        self.residual = residual
 
-    def forward(self, input):
-        '''
-        :param input: input feature map
-        :return: transformed feature map
-        '''
-        # reduce
-        output1 = self.c1(input)
-        # split and transform
-        d1 = self.d1(output1)
-        d2 = self.d2(output1)
-        d4 = self.d4(output1)
-        d8 = self.d8(output1)
-        d16 = self.d16(output1)
+    def forward(self, x):
+        x_proj = self.conv1(x)
+        d1 = self.d_conv1(x_proj)
+        d2 = self.d_conv2(x_proj)
+        d4 = self.d_conv4(x_proj)
+        d8 = self.d_conv8(x_proj)
+        d16 = self.d_conv16(x_proj)
 
-        # heirarchical fusion for de-gridding
-        add1 = d2
-        add2 = add1 + d4
-        add3 = add2 + d8
-        add4 = add3 + d16
+        feat1 = d2
+        feat2 = feat1 + d4
+        feat3 = feat2 + d8
+        feat4 = feat3 + d16
 
-        #merge
-        combine = paddle.concat([d1, add1, add2, add3, add4], axis=1)
+        feat = paddle.concat([d1, feat1, feat2, feat3, feat4], axis=1)
 
-        # if residual version
-        if self.add:
-            combine = input + combine
-        output = self.bn(combine)
-        return output
+        if self.residual:
+            feat = feat + x
+        out = self.bn(feat)
+        return out
 
 
-class InputProjectionA(nn.Layer):
-    '''
-    This class projects the input image to the same spatial dimensions as the feature map.
-    For example, if the input image is 512 x512 x3 and spatial dimensions of feature map size are 56x56xF, then
-    this class will generate an output of 56x56x3
-    '''
-    def __init__(self, samplingTimes):
-        '''
-        :param samplingTimes: The rate at which you want to down-sample the image
-        '''
+class PoolDown(nn.Layer):
+    def __init__(self, down_sampling_times):
         super().__init__()
-        self.pool = nn.LayerList()
-        for i in range(0, samplingTimes):
-            #pyramid-based approach for down-sampling
-            self.pool.append(nn.AvgPool2D(3, stride=2, padding=1))
+        self.pool = nn.Sequential(
+            *[
+                nn.AvgPool2D(3, stride=2, padding=1) for i in range(down_sampling_times)
+            ]
+        )
 
-    def forward(self, input):
-        '''
-        :param input: Input RGB Image
-        :return: down-sampled image (pyramid-based approach)
-        '''
-        for pool in self.pool:
-            input = pool(input)
-        return input
+    def forward(self, x):
+        x = self.pool(x)
+        return x
 
 
-class ESPNet_Encoder(nn.Layer):
-    '''
-    This class defines the ESPNet-C network in the paper
-    '''
-    def __init__(self, classes=20, p=5, q=3):
-        '''
-        :param classes: number of classes in the dataset. Default is 20 for the cityscapes
-        :param p: depth multiplier
-        :param q: depth multiplier
-        '''
+class ESPNetEncoder(nn.Layer):
+    def __init__(self, num_classes, in_channels=3, level2_depth=5, leve3_depth=3):
         super().__init__()
-        self.level1 = layers.ConvBNPReLU(3, 16, 3, 2)
-        self.sample1 = InputProjectionA(1)
-        self.sample2 = InputProjectionA(2)
+        self.level1 = ConvBNPReLU(in_channels, 16, 3, 2)
+        self.sample1 = PoolDown(1)
+        self.sample2 = PoolDown(2)
 
-        self.b1 = BNPReLU(16 + 3)
-        self.level2_0 = DownSamplerB(16 +3, 64)
+        self.br1 = BNPReLU(in_channels + 16)
+        self.level2_0 = DownSampler(in_channels + 16, 64)
 
         self.level2 = nn.LayerList()
-        for i in range(0, p):
-            self.level2.append(DilatedParllelResidualBlockB(64 , 64))
-        self.b2 = BNPReLU(128 + 3)
+        for i in range(level2_depth):
+            self.level2.append(DilatedResidualBlock(64, 64))
+        self.br2 = BNPReLU(in_channels + 128)
 
-        self.level3_0 = DownSamplerB(128 + 3, 128)
+        self.level3_0 = DownSampler(in_channels + 128, 128)
         self.level3 = nn.LayerList()
-        for i in range(0, q):
-            self.level3.append(DilatedParllelResidualBlockB(128 , 128))
-        self.b3 = BNPReLU(256)
+        for i in range(0, leve3_depth):
+            self.level3.append(DilatedResidualBlock(128, 128))
+        self.br3 = BNPReLU(256)
 
-        self.classifier = C(256, classes, 1, 1)
+        self.head = Conv(256, num_classes, 1, 1)
 
-    def forward(self, input):
-        '''
-        :param input: Receives the input RGB image
-        :return: the transformed feature map with spatial dimensions 1/8th of the input image
-        '''
-        output0 = self.level1(input)
-        inp1 = self.sample1(input)
-        inp2 = self.sample2(input)
 
-        output0_cat = self.b1(paddle.concat([output0, inp1], axis=1))
-        output1_0 = self.level2_0(output0_cat) # down-sampled
-        
+    def forward(self, x):
+        output0 = self.level1(x)
+        input_res1 = self.sample1(x)
+        input_res2 = self.sample2(x)
+        outputs = []
+
+        output0_cat = self.br1(paddle.concat([output0, input_res1], axis=1))
+        outputs.append(output0_cat)
+        output1 = self.level2_0(output0_cat)
+        feats = [input_res2, output1]
+
         for i, layer in enumerate(self.level2):
-            if i==0:
-                output1 = layer(output1_0)
-            else:
-                output1 = layer(output1)
+            output1 = layer(output1)
+        feats.append(output1)
+        output1_cat = self.br2(paddle.concat(feats, axis=1))
+        outputs.append(output1_cat)
 
-        output1_cat = self.b2(paddle.concat([output1,  output1_0, inp2], axis=1))
-
-        output2_0 = self.level3_0(output1_cat) # down-sampled
+        output2 = self.level3_0(output1_cat)
+        feats = [output2]
         for i, layer in enumerate(self.level3):
-            if i==0:
-                output2 = layer(output2_0)
-            else:
-                output2 = layer(output2)
-
-        output2_cat = self.b3(paddle.concat([output2_0, output2], axis=1))
-
-        classifier = self.classifier(output2_cat)
-
-        return classifier
-
-@manager.MODELS.add_component
-class ESPNetV2(nn.Layer):
-    '''
-    This class defines the ESPNet network
-    '''
-
-    def __init__(self, num_classes=19, p=2, q=3, encoderFile=None):
-        '''
-        :param classes: number of classes in the dataset. Default is 20 for the cityscapes
-        :param p: depth multiplier
-        :param q: depth multiplier
-        :param encoderFile: pretrained encoder weights. Recall that we first trained the ESPNet-C and then attached the
-                            RUM-based light weight decoder. See paper for more details.
-        '''
-        super().__init__()
-        classes = num_classes
-        self.encoder = ESPNet_Encoder(classes, p, q)
-        # if encoderFile != None:
-        #     self.encoder.load_state_dict(paddle.load(encoderFile))
-        #     print('Encoder loaded!')
-        # load the encoder modules
-        self.modules = list()
-        for i, m in enumerate(self.encoder.children()):
-            self.modules.append(m)
-
-        # light-weight decoder
-        self.level3_C = C(128 + 3, classes, 1, 1)
-        self.br = nn.BatchNorm2D(classes, epsilon=1e-03)
-        self.conv = layers.ConvBNPReLU(19 + classes, classes, 3, 1)
-
-        self.up_l3 = nn.Sequential(nn.Conv2DTranspose(classes, classes, 2, stride=2, padding=0, output_padding=0, bias_attr=False))
-        self.combine_l2_l3 = nn.Sequential(BNPReLU(2*classes), DilatedParllelResidualBlockB(2*classes , classes, add=False))
-
-        self.up_l2 = nn.Sequential(nn.Conv2DTranspose(classes, classes, 2, stride=2, padding=0, output_padding=0, bias_attr=False), BNPReLU(classes))
-
-        self.classifier = nn.Conv2DTranspose(classes, classes, 2, stride=2, padding=0, output_padding=0, bias_attr=False)
-
-    def forward(self, input):
-        '''
-        :param input: RGB image
-        :return: transformed feature map
-        '''
-        output0 = self.modules[0](input)
-        inp1 = self.modules[1](input)
-        inp2 = self.modules[2](input)
-
-        output0_cat = self.modules[3](paddle.concat([output0, inp1], axis=1))
-        output1_0 = self.modules[4](output0_cat)  # down-sampled
-
-        for i, layer in enumerate(self.modules[5]):
-            if i == 0:
-                output1 = layer(output1_0)
-            else:
-                output1 = layer(output1)
-
-        output1_cat = self.modules[6](paddle.concat([output1, output1_0, inp2], axis=1))
-
-        output2_0 = self.modules[7](output1_cat)  # down-sampled
-        for i, layer in enumerate(self.modules[8]):
-            if i == 0:
-                output2 = layer(output2_0)
-            else:
-                output2 = layer(output2)
-
-        output2_cat = self.modules[9](paddle.concat([output2_0, output2], axis=1)) # concatenate for feature map width expansion
-
-        output2_c = self.up_l3(self.br(self.modules[10](output2_cat))) #RUM
-
-        output1_C = self.level3_C(output1_cat) # project to C-dimensional space
-        comb_l2_l3 = self.up_l2(self.combine_l2_l3(paddle.concat([output1_C, output2_c], axis=1))) #RUM
-
-        concat_features = self.conv(paddle.concat([comb_l2_l3, output0_cat], axis=1))
-        # print(concat_features.shape)
-        classifier = self.classifier(concat_features)
-        # classifier = self.classifier(classifier)
-        # classifier = F.interpolate(classifier,scale_factor=2, mode="bilinear", align_corners=True)
-        # classifier = F.interpolate(classifier,scale_factor=2, mode="bilinear", align_corners=True)
-        # classifier = F.interpolate(classifier,scale_factor=2, mode="bilinear", align_corners=True)
-        # print(classifier.shape)
-        return [classifier]
-        # return concat_features
+            output2 = layer(output2)
+        feats.append(output2)
+        output2_cat = self.br3(paddle.concat(feats, axis=1))
+        out = self.head(output2_cat)
+        outputs.append(out)
+        return outputs
 
 
 if __name__ == '__main__':
-    import paddle
-    import numpy as np
+    model = ESPNetV1(19, 3, 2, 8)
+    paddle.summary(model, (4, 3, 256, 256))
 
-    paddle.enable_static()
 
-    startup_prog = paddle.static.default_startup_program()
 
-    exe = paddle.static.Executor(paddle.CPUPlace())
-    exe.run(startup_prog)
-    path_prefix = "./output/model"
 
-    [inference_program, feed_target_names, fetch_targets] = (
-        paddle.static.load_inference_model(path_prefix, exe))
-    print('inference_program:', inference_program)
 
-    tensor_img = np.array(np.random.random((1, 3, 1024, 2048)), dtype=np.float32)
-    results = exe.run(inference_program,
-                feed={feed_target_names[0]: tensor_img},
-                fetch_list=fetch_targets)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

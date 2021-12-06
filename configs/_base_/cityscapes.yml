@@ -22,7 +22,6 @@ train_dataset:
 val_dataset:
   type: Cityscapes
   dataset_root: /home/aistudio/data/data64550/cityscapes
-  # dataset_root: cityscapes
   transforms:
     - type: Normalize
   mode: val
@@ -36,8 +35,6 @@ optimizer:
 lr_scheduler:
   type: PolynomialDecay
   learning_rate: 0.01
-#   step_size: 100
-#   gamma: 0.5
   end_lr: 0
   power: 0.9
 
