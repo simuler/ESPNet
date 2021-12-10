@@ -31,7 +31,7 @@ https://github.com/sacmehta/ESPNet
     - PaddlePaddle == develop
 
 
-## 快速开始
+## 5 快速开始
 
 ### 第一步：克隆本项目
 ```bash
@@ -65,17 +65,18 @@ output目录下包含已经训练好的模型参数以及对应的日志文件�
 python val.py --config configs/espnetv1/espnetv1_cityscapes_1024x512_120k.yml --model_path output/best_model/model.pdparams
 ```
 
-## 5 代码结构与说明
+## 6 代码结构与说明
 **代码结构**
 ```
 ├─configs                          
-├─images                         
+├─log                         
 ├─output                           
-├─paddleseg                                                   
+├─paddleseg
+├─tools                                               
 │  export.py                     
 │  predict.py                        
 │  README.md                        
-│  README_CN.md                     
+│  compute_classweight.py                    
 │  requirements.txt                      
 │  setup.py                   
 │  train.py                
@@ -85,7 +86,7 @@ python val.py --config configs/espnetv1/espnetv1_cityscapes_1024x512_120k.yml --
 1、本项目在Aistudio平台，使用Tesla V100 * 4 脚本任务训练120K miou达到63.65%。
 2、本项目基于PaddleSeg开发。
 
-## 6 模型信息
+## 7 模型信息
 
 相关信息:
 

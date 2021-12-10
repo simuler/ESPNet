@@ -29,9 +29,22 @@ def SyncBatchNorm(*args, **kwargs):
         return nn.BatchNorm2D(*args, **kwargs)
     else:
         return nn.SyncBatchNorm(*args, **kwargs)
-        
+
+ 
 @manager.MODELS.add_component
 class ESPNetV1(nn.Layer):
+    """
+    The ESPNetV1 implementation based on PaddlePaddle.
+    The original article refers to
+    Sachin Mehta1, Mohammad Rastegari, Anat Caspi, Linda Shapiro, and Hannaneh Hajishirzi. "ESPNet: Efficient Spatial Pyramid of Dilated Convolutions for Semantic Segmentation"
+    (https://arxiv.org/abs/1803.06815).
+    Args:
+        num_classes (int): The unique number of target classes.
+        in_channels (int, optional): Number of input channels. Default: 3.
+        level2_depth (int, optional): Depth of DilatedResidualBlock. Default: 2.
+        level3_depth (int, optional): Depth of DilatedResidualBlock. Default: 3.
+        pretrained (str, optional): The path or url of pretrained model. Default: None.
+    """
     def __init__(self, num_classes, in_channels=3, level2_depth=2, level3_depth=3, pretrained=None):
         super().__init__()
         self.encoder = ESPNetEncoder(num_classes, in_channels, level2_depth, level3_depth)
@@ -125,6 +138,12 @@ class ConvDilated(nn.Layer):
 
 
 class DownSampler(nn.Layer):
+    """
+    Down sampler.
+    Args:
+        in_channels (int): Number of input channels.
+        out_channels (int): Number of output channels.
+    """
     def __init__(self, in_channels, out_channels):
         super().__init__()
         branch_channels = out_channels // 5
@@ -158,6 +177,13 @@ class DownSampler(nn.Layer):
         
 
 class DilatedResidualBlock(nn.Layer):
+    '''
+    ESP block, principle: reduce -> split -> transform -> merge
+    Args:
+        in_channels (int): Number of input channels.
+        out_channels (int): Number of output channels.
+        residual (bool, optional): Add a residual connection through identity operation. Default: True.
+    '''
     def __init__(self, in_channels, out_channels, residual=True):
         super().__init__()
         branch_channels = out_channels // 5
@@ -193,6 +219,14 @@ class DilatedResidualBlock(nn.Layer):
 
 
 class ESPNetEncoder(nn.Layer):
+    '''
+    The ESPNet-C implementation based on PaddlePaddle.
+    Args:
+        num_classes (int): The unique number of target classes.
+        in_channels (int, optional): Number of input channels. Default: 3.
+        level2_depth (int, optional): Depth of DilatedResidualBlock. Default: 5.
+        level3_depth (int, optional): Depth of DilatedResidualBlock. Default: 3.
+    '''
     def __init__(self, num_classes, in_channels=3, level2_depth=5, level3_depth=3):
         super().__init__()
         self.level1 = ConvBNPReLU(in_channels, 16, 3, 2)
@@ -212,7 +246,6 @@ class ESPNetEncoder(nn.Layer):
         )
         self.br3 = BNPReLU(256)
         self.proj3 = ConvBNPReLU(256, num_classes, 1)
-
 
     def forward(self, x):
         f1 = self.level1(x)
@@ -238,25 +271,6 @@ class ESPNetEncoder(nn.Layer):
         return p1, p2, p3
 
 
-
 if __name__ == '__main__':
     model = ESPNetV1(19, 3, 2, 8)
     paddle.summary(model, (4, 3, 256, 256))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
